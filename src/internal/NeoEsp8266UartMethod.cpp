@@ -73,6 +73,27 @@ NeoEsp8266Uart::~NeoEsp8266Uart()
     free(_pixels);
 }
 
+bool NeoEsp8266Uart::SetPixelCount(uint16_t pixelCount, size_t elementSize)
+{
+    size_t re_sizePixels = pixelCount * elementSize;
+    uint8_t* re_pixels = (uint8_t*)realloc(_pixels, re_sizePixels);
+    if (re_pixels)
+    {
+        if (_sizePixels < re_sizePixels)
+        {
+            // Incrementally zero the additional pixel buffer
+            memset(re_pixels+_sizePixels, 0x00, re_sizePixels-_sizePixels);
+        }
+        _pixels = re_pixels;
+        _sizePixels = re_sizePixels;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 void NeoEsp8266Uart::InitializeUart(uint32_t uartBaud)
 {
     // Configure the serial line with 1 start bit (0), 6 data bits and 1 stop bit (1)
@@ -144,6 +165,38 @@ NeoEsp8266AsyncUart::~NeoEsp8266AsyncUart()
         yield();
     }
     free(_asyncPixels);
+}
+
+bool NeoEsp8266AsyncUart::SetPixelCount(uint16_t pixelCount, size_t elementSize)
+{
+    while (esp8266_uart1_async_buf != esp8266_uart1_async_buf_end)
+    {
+        yield();
+    }
+
+    ETS_UART_INTR_DISABLE();
+
+    size_t old_sizePixels = _sizePixels;
+    bool Ret = NeoEsp8266Uart::SetPixelCount(pixelCount, elementSize);
+
+    if (Ret)
+    {
+        uint8_t* re_asyncPixels = (uint8_t*)realloc(_asyncPixels, _sizePixels);
+        if (re_asyncPixels)
+        {
+            // No need to incrementally zero the scratch async buffer
+            _asyncPixels = re_asyncPixels;
+        }
+        else
+        {
+            NeoEsp8266Uart::SetPixelCount(old_sizePixels/elementSize, elementSize);
+            Ret = false;
+        }
+    }
+
+    ETS_UART_INTR_ENABLE();
+
+    return Ret;
 }
 
 void ICACHE_RAM_ATTR NeoEsp8266AsyncUart::InitializeUart(uint32_t uartBaud)

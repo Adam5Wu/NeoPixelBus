@@ -1,5 +1,5 @@
 /*-------------------------------------------------------------------------
-NeoPixel library 
+NeoPixel library
 
 Written by Michael C. Miller.
 
@@ -98,7 +98,7 @@ template<typename T_COLOR_FEATURE, typename T_METHOD> class NeoPixelBus
 public:
     // Constructor: number of LEDs, pin number
     // NOTE:  Pin Number maybe ignored due to hardware limitations of the method.
-   
+
     NeoPixelBus(uint16_t countPixels, uint8_t pin) :
         _countPixels(countPixels),
         _state(0),
@@ -149,7 +149,7 @@ public:
     }
 
     inline bool CanShow() const
-    { 
+    {
         return _method.IsReadyToUpdate();
     };
 
@@ -168,7 +168,7 @@ public:
         _state &= ~NEO_DIRTY;
     };
 
-    uint8_t* Pixels() 
+    uint8_t* Pixels()
     {
         return _method.getPixels();
     };
@@ -188,6 +188,19 @@ public:
         return _countPixels;
     };
 
+    bool SetPixelCount(uint16_t newPixelCount)
+    {
+        if (_countPixels != newPixelCount)
+        {
+            Dirty();
+            if (!_method.SetPixelCount(newPixelCount, T_COLOR_FEATURE::PixelSize)) {
+                return false;
+            }
+            _countPixels = newPixelCount;
+        }
+        return true;
+    };
+
     void SetPixelColor(uint16_t indexPixel, typename T_COLOR_FEATURE::ColorObject color)
     {
         if (indexPixel < _countPixels)
@@ -205,7 +218,7 @@ public:
         }
         else
         {
-            // Pixel # is out of bounds, this will get converted to a 
+            // Pixel # is out of bounds, this will get converted to a
             // color object type initialized to 0 (black)
             return 0;
         }
@@ -213,7 +226,7 @@ public:
 
     void ClearTo(typename T_COLOR_FEATURE::ColorObject color)
     {
-        uint8_t temp[T_COLOR_FEATURE::PixelSize]; 
+        uint8_t temp[T_COLOR_FEATURE::PixelSize];
         uint8_t* pixels = _method.getPixels();
 
         T_COLOR_FEATURE::applyPixelColor(temp, 0, color);
@@ -271,8 +284,8 @@ public:
 
     void ShiftLeft(uint16_t shiftCount, uint16_t first, uint16_t last)
     {
-        if (first < _countPixels && 
-            last < _countPixels && 
+        if (first < _countPixels &&
+            last < _countPixels &&
             first < last &&
             (last - first) >= shiftCount)
         {
@@ -320,11 +333,11 @@ public:
             Dirty();
         }
     }
-    
 
- 
+
+
 protected:
-    const uint16_t _countPixels; // Number of RGB LEDs in strip
+    uint16_t _countPixels; // Number of RGB LEDs in strip
 
     uint8_t _state;     // internal state
     T_METHOD _method;

@@ -74,7 +74,7 @@ public:
 class NeoEsp8266DmaSpeed800Kbps
 {
 public:
-    const static uint32_t I2sClockDivisor = 3; 
+    const static uint32_t I2sClockDivisor = 3;
     const static uint32_t I2sBaseClockDivisor = 16;
     const static uint32_t ResetTimeUs = 50;
 };
@@ -82,7 +82,7 @@ public:
 class NeoEsp8266DmaSpeed400Kbps
 {
 public:
-    const static uint32_t I2sClockDivisor = 6; 
+    const static uint32_t I2sClockDivisor = 6;
     const static uint32_t I2sBaseClockDivisor = 16;
     const static uint32_t ResetTimeUs = 50;
 };
@@ -100,7 +100,7 @@ const uint8_t c_I2sPin = 3; // due to I2S hardware, the pin used is restricted t
 template<typename T_SPEED> class NeoEsp8266DmaMethodBase
 {
 public:
-    NeoEsp8266DmaMethodBase(uint16_t pixelCount, size_t elementSize) 
+    NeoEsp8266DmaMethodBase(uint16_t pixelCount, size_t elementSize)
     {
         uint16_t dmaPixelSize = c_dmaBytesPerPixelBytes * elementSize;
 
@@ -131,9 +131,68 @@ public:
     {
         StopDma();
 
+        pinMode(c_I2sPin, INPUT);
+
         free(_pixels);
         free(_i2sBuffer);
         free(_i2sBufDesc);
+    }
+
+    bool SetPixelCount(uint16_t pixelCount, size_t elementSize)
+    {
+        // wait for not actively sending data
+        while (_dmaState != NeoDmaState_Idle)
+        {
+            yield();
+        }
+
+        uint16_t dmaPixelSize = c_dmaBytesPerPixelBytes * elementSize;
+
+        size_t re_pixelsSize = pixelCount * elementSize;
+        uint32_t re_i2sBufferSize = pixelCount * dmaPixelSize;
+        uint16_t re_i2sBufDescCount = (re_i2sBufferSize / _is2BufMaxBlockSize) + 1 + 2;
+
+        uint8_t* re_pixels = nullptr;
+        uint8_t* re_i2sBuffer = nullptr;
+        slc_queue_item* re_i2sBufDesc = nullptr;
+        do {
+            re_pixels = (uint8_t*)realloc(_pixels, re_pixelsSize);
+            if (!re_pixels) break;
+            re_i2sBuffer = (uint8_t*)realloc(_i2sBuffer, re_i2sBufferSize);
+            if (!re_i2sBuffer) break;
+            re_i2sBufDesc = (slc_queue_item*)realloc(_i2sBufDesc, re_i2sBufDescCount * sizeof(slc_queue_item));
+            if (!re_i2sBufDesc) break;
+
+            if (_pixelsSize < re_pixelsSize)
+            {
+                // Incrementally zero the additional pixel buffer
+                memset(re_pixels+_pixelsSize, 0x00, re_pixelsSize-_pixelsSize);
+                memset(re_i2sBuffer+_i2sBufferSize, 0x00, re_i2sBufferSize-_i2sBufferSize);
+            }
+            _pixels = re_pixels;
+            _pixelsSize = re_pixelsSize;
+            _i2sBuffer = re_i2sBuffer;
+            _i2sBufferSize = re_i2sBufferSize;
+            _i2sBufDesc = re_i2sBufDesc;
+            _i2sBufDescCount = re_i2sBufDescCount;
+
+            I2SDMABufferSetup();
+            return true;
+        } while (false);
+
+        // When we reach here, we were incrementing the pixels and have failed
+        //   somewhere in the middle, we need to shrink the enlarged buffers
+        if (re_pixels)
+            _pixels = (uint8_t*)realloc(re_pixels, _pixelsSize);
+        if (re_i2sBuffer)
+            _i2sBuffer = (uint8_t*)realloc(re_i2sBuffer, _i2sBufferSize);
+        if (re_i2sBufDesc)
+            _i2sBufDesc = (slc_queue_item*)realloc(re_i2sBufDesc, _i2sBufDescCount * sizeof(slc_queue_item));
+
+        // If any buffer were relocated, setup the DMA again
+        if (re_pixels || re_i2sBuffer || re_i2sBufDesc)
+            I2SDMABufferSetup();
+        return false;
     }
 
     bool IsReadyToUpdate() const
@@ -141,10 +200,9 @@ public:
         return (_dmaState == NeoDmaState_Idle);
     }
 
-    void Initialize()
+    void I2SDMABufferSetup()
     {
         StopDma();
-        _dmaState = NeoDmaState_Sending; // start off sending empty buffer
 
         uint8_t* is2Buffer = _i2sBuffer;
         uint32_t is2BufferSize = _i2sBufferSize;
@@ -188,7 +246,6 @@ public:
 
         // setup the rest of i2s DMA
         //
-        ETS_SLC_INTR_DISABLE();
         SLCC0 |= SLCRXLR | SLCTXLR;
         SLCC0 &= ~(SLCRXLR | SLCTXLR);
         SLCIC = 0xFFFFFFFF;
@@ -216,6 +273,13 @@ public:
         //Start transmission
         SLCTXL |= SLCTXLS;
         SLCRXL |= SLCRXLS;
+    }
+
+    void Initialize()
+    {
+        I2SDMABufferSetup();
+
+        _dmaState = NeoDmaState_Sending; // start off sending empty buffer
 
         pinMode(c_I2sPin, FUNCTION_1); // I2S0_DATA
 
@@ -269,7 +333,7 @@ public:
 private:
     static NeoEsp8266DmaMethodBase* s_this; // for the ISR
 
-    size_t    _pixelsSize;    // Size of '_pixels' buffer 
+    size_t    _pixelsSize;    // Size of '_pixels' buffer
     uint8_t*  _pixels;        // Holds LED color values
 
     uint32_t _i2sBufferSize; // total size of _i2sBuffer
@@ -310,7 +374,7 @@ private:
                     slc_queue_item* finished_item = (slc_queue_item*)SLCRXEDA;
 
                     // data block has pending data waiting to send, prepare it
-                    // point last state block to top 
+                    // point last state block to top
                     (finished_item + 1)->next_link_ptr = (uint32_t)(s_this->_i2sBufDesc);
 
                     s_this->_dmaState = NeoDmaState_Sending;
@@ -358,16 +422,15 @@ private:
     void StopDma()
     {
         ETS_SLC_INTR_DISABLE();
+
         SLCIC = 0xFFFFFFFF;
         SLCIE = 0;
         SLCTXL &= ~(SLCTXLAM << SLCTXLA); // clear TX descriptor address
         SLCRXL &= ~(SLCRXLAM << SLCRXLA); // clear RX descriptor address
-
-        pinMode(c_I2sPin, INPUT);
     }
 };
 
-template<typename T_SPEED> 
+template<typename T_SPEED>
 NeoEsp8266DmaMethodBase<T_SPEED>* NeoEsp8266DmaMethodBase<T_SPEED>::s_this;
 
 typedef NeoEsp8266DmaMethodBase<NeoEsp8266DmaSpeedWs2813> NeoEsp8266DmaWs2813Method;

@@ -33,6 +33,9 @@ License along with NeoPixel.  If not, see
 // depend on the transmission speed, and therefore, it isn't a template
 class NeoEsp8266Uart
 {
+public:
+    bool SetPixelCount(uint16_t pixelCount, size_t elementSize);
+
 protected:
     NeoEsp8266Uart(uint16_t pixelCount, size_t elementSize);
 
@@ -42,9 +45,15 @@ protected:
 
     void UpdateUart();
 
+    template<typename T_SPEED>
+    uint32_t getPixelTime() const
+    {
+        return 0;
+    }
+
     static const uint8_t* ICACHE_RAM_ATTR FillUartFifo(const uint8_t* pixels, const uint8_t* end);
 
-    size_t    _sizePixels;   // Size of '_pixels' buffer below
+    size_t   _sizePixels;    // Size of '_pixels' buffer below
     uint8_t* _pixels;        // Holds LED color values
     uint32_t _startTime;     // Microsecond count when last update started
 };
@@ -60,6 +69,9 @@ protected:
 // every call to NeoPixelBus.Show() and must not be cached.
 class NeoEsp8266AsyncUart: public NeoEsp8266Uart
 {
+public:
+    bool SetPixelCount(uint16_t pixelCount, size_t elementSize);
+
 protected:
     NeoEsp8266AsyncUart(uint16_t pixelCount, size_t elementSize);
 
@@ -68,6 +80,12 @@ protected:
     void InitializeUart(uint32_t uartBaud);
 
     void UpdateUart();
+
+    template<typename T_SPEED>
+    uint32_t getPixelTime() const
+    {
+        return (T_SPEED::ByteSendTimeUs * this->_sizePixels);
+    }
 
 private:
     static void ICACHE_RAM_ATTR IntrHandler(void* param);
@@ -120,7 +138,7 @@ public:
     bool IsReadyToUpdate() const
     {
         uint32_t delta = micros() - this->_startTime;
-        return delta >= getPixelTime() + T_SPEED::ResetTimeUs;
+        return delta >= this->template getPixelTime<T_SPEED>() + T_SPEED::ResetTimeUs;
     }
 
     void Initialize()
@@ -131,7 +149,7 @@ public:
         // We need to delay 50+ microseconds the output stream to force a data
         // latch and discard this bit. Otherwise, that bit would be prepended to
         // the first frame corrupting it.
-        this->_startTime = micros() - getPixelTime();
+        this->_startTime = micros() - this->template getPixelTime<T_SPEED>();
     }
 
     void Update()
@@ -152,18 +170,12 @@ public:
     uint8_t* getPixels() const
     {
         return this->_pixels;
-    };
+    }
 
     size_t getPixelsSize() const
     {
         return this->_sizePixels;
-    };
-
-private:
-    uint32_t getPixelTime() const
-    {
-        return (T_SPEED::ByteSendTimeUs * this->_sizePixels);
-    };
+    }
 };
 
 typedef NeoEsp8266UartMethodBase<NeoEsp8266UartSpeedWs2813, NeoEsp8266Uart> NeoEsp8266UartWs2813Method;
