@@ -143,6 +143,7 @@ private:
         AnimationContext() :
             _duration(0),
             _remaining(0),
+            _completion(false),
             _fnCallback(NULL)
         {}
 
@@ -151,17 +152,19 @@ private:
             _duration = duration;
             _remaining = duration;
             _fnCallback = animUpdate;
-            
+
         }
 
         void StopAnimation()
         {
             _remaining = 0;
+            _completion = false;
         }
 
         uint16_t _duration;
         uint16_t _remaining;
-       
+        bool _completion;
+
         AnimUpdateCallback _fnCallback;
     };
 
