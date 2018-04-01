@@ -66,8 +66,8 @@ bool NeoPixelAnimator::NextAvailableAnimation(uint16_t* indexAvailable, uint16_t
     return false;
 }
 
-void NeoPixelAnimator::StartAnimation(uint16_t indexAnimation, 
-        uint16_t duration, 
+void NeoPixelAnimator::StartAnimation(uint16_t indexAnimation,
+        uint16_t duration,
         AnimUpdateCallback animUpdate)
 {
     if (indexAnimation >= _countAnimations || animUpdate == NULL)
@@ -136,26 +136,40 @@ void NeoPixelAnimator::UpdateAnimations()
                 pAnim = &_animations[iAnim];
                 AnimUpdateCallback fnUpdate = pAnim->_fnCallback;
                 AnimationParam param;
-                
+
                 param.index = iAnim;
 
+                if (pAnim->_remaining && (pAnim->_remaining == pAnim->_duration))
+                {
+                    // Initialization notice
+                    param.state = AnimationState_Started;
+                    param.progress = 0;
+                    fnUpdate(param);
+                }
+                param.state = AnimationState_Progress;
                 if (pAnim->_remaining > delta)
                 {
-                    param.state = (pAnim->_remaining == pAnim->_duration) ? AnimationState_Started : AnimationState_Progress;
                     param.progress = (float)(pAnim->_duration - pAnim->_remaining) / (float)pAnim->_duration;
-
                     fnUpdate(param);
 
                     pAnim->_remaining -= delta;
                 }
                 else if (pAnim->_remaining > 0)
                 {
+                    param.progress = 1.0f;
+                    fnUpdate(param);
+
+                    pAnim->_remaining = 0;
+                    pAnim->_completion = true;
+                }
+                else if (pAnim->_completion)
+                {
+                    pAnim->_completion = false;
+                    _activeAnimations--;
+
+                    // Completion notice
                     param.state = AnimationState_Completed;
                     param.progress = 1.0f;
-
-                    _activeAnimations--; 
-                    pAnim->StopAnimation();
-
                     fnUpdate(param);
                 }
             }
